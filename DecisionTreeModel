@@ -1,0 +1,104 @@
+# DECISION Tree code -------------
+
+#Load packages
+
+library(rsample)     # data splitting 
+library(dplyr)       # data wrangling
+library(rpart)       # performing regression trees
+library(rpart.plot)  # plotting regression trees
+library(ipred)       # bagging
+library(caret)       # bagging
+
+#Create training (70%) and testing (30%) subsets. Set seed.
+set.seed(123)
+food_split <- initial_split(subset, prop = .7)
+food_train <- training(food_split)
+food_test  <- testing(food_split)
+
+#Create a tree
+tree = rpart(lapop1share ~ factor(Urban) + OHU2010 + PovertyRate + MedianFamilyIncome + TractLOWI + TractSNAP + TractHUNV + TractBlack + TractAsian + TractNHOPI + TractAIAN + TractOMultir + TractHispanic, data=food_train, control=rpart.control(cp=.0001), method="anova")
+printcp(tree)
+tree #We have 13 variables, but only 5 are effectively used by the decision tree model. Why? Because the package rpart "prunes" the tree by applying a range of cost complexity alpha values.
+#rpart also compares the error for each alpha value by performing a 10-fold cross-validation so that the error associated with an alpha is computed on the holdout validation data. We can see this at work in the next plot.
+plotcp(tree) #y-axis is cross validation error, lower x-axis is cost complexity (α) value, upper x-axis is the number of terminal nodes
+tree2 = rpart( #We can see how there is not much difference between using a tree with 5 or 6 nodes by allowing rpart to create a model with no penalty for a full grown tree and plotting the model
+  formula = lapop1share ~ factor(Urban) + OHU2010 + PovertyRate + MedianFamilyIncome + TractLOWI + TractSNAP + TractHUNV + TractBlack + TractAsian + TractNHOPI + TractAIAN + TractOMultir + TractHispanic,
+  data    = food_train,
+  method  = "anova", 
+  control = list(cp = 0, xval = 10)
+)
+plotcp(tree2)
+printcp(tree2)
+
+#Plot tree
+rpart.plot(tree, #plot for tree1
+    faclen=0, #use full names for factor labels
+    extra=1, #display number of obs. for each terminal node
+    roundint=F, #don't round to integers in output
+    digits=5)
+rpart.plot(tree2, #plot for tree2
+           faclen=0, 
+           extra=1, 
+           roundint=F, 
+           digits=5)
+           
+#Tuning the model by performing a grid search to automatically search across a range of differently tuned models to identify the optimal hyerparameter setting.
+hyper_grid = expand.grid(
+  minsplit = seq(5, 20, 1),
+  maxdepth = seq(8, 15, 1)
+)
+nrow(hyper_grid)
+
+models = list()
+
+for (i in 1:nrow(hyper_grid)) {
+  
+  # get minsplit, maxdepth values at row i
+  minsplit = hyper_grid$minsplit[i]
+  maxdepth = hyper_grid$maxdepth[i]
+  
+  # train a model and store in the list
+  models[[i]] = rpart(
+    formula = lapop1share ~ factor(Urban) + OHU2010 + PovertyRate + MedianFamilyIncome + TractLOWI + TractSNAP + TractHUNV + TractBlack + TractAsian + TractNHOPI + TractAIAN + TractOMultir + TractHispanic,
+    data    = food_train,
+    method  = "anova",
+    control = list(minsplit = minsplit, maxdepth = maxdepth)
+  )
+}
+
+# function to get optimal cp
+get_cp = function(x) {
+  min    = which.min(x$cptable[, "xerror"])
+  cp = x$cptable[min, "CP"] 
+}
+
+# function to get minimum error
+get_min_error = function(x) {
+  min    = which.min(x$cptable[, "xerror"])
+  xerror = x$cptable[min, "xerror"] 
+}
+
+hyper_grid %>%
+  mutate(
+    cp    = purrr::map_dbl(models, get_cp),
+    error = purrr::map_dbl(models, get_min_error)
+  ) %>%
+  arrange(error) %>%
+  top_n(-5, wt = error)
+
+#Optimal model and prediction
+
+optimal_tree = rpart(
+  formula = lapop1share ~ factor(Urban) + OHU2010 + PovertyRate + MedianFamilyIncome + TractLOWI + TractSNAP + TractHUNV + TractBlack + TractAsian + TractNHOPI + TractAIAN + TractOMultir + TractHispanic,
+  data    = food_train,
+  method  = "anova",
+  control = list(minsplit = 7, maxdepth = 11, cp = 0.01)
+)
+rpart.plot(tree2, #plot for optimal tree
+           faclen=0, 
+           extra=1, 
+           roundint=F, 
+           digits=5)
+
+pred = predict(optimal_tree, newdata = food_test)
+RMSE(pred = pred, obs = food_test$lapop1share)
