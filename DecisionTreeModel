@@ -11,9 +11,9 @@ library(caret)       # bagging
 
 #Create training (70%) and testing (30%) subsets. Set seed.
 set.seed(123)
-food_split <- initial_split(subset, prop = .7)
-food_train <- training(food_split)
-food_test  <- testing(food_split)
+food_split = initial_split(subset, prop = .7)
+food_train = training(food_split)
+food_test  = testing(food_split)
 
 #Create a tree
 tree = rpart(lapop1share ~ factor(Urban) + OHU2010 + PovertyRate + MedianFamilyIncome + TractLOWI + TractSNAP + TractHUNV + TractBlack + TractAsian + TractNHOPI + TractAIAN + TractOMultir + TractHispanic, data=food_train, control=rpart.control(cp=.0001), method="anova")
